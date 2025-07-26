@@ -21,6 +21,9 @@ def main():
     end_time = time.time()
     print(f"Non-speculative time: {end_time - start_time} seconds")
 
+    model.reset()
+
+    # Speculative
     print("STARTING SPECULATIVE")
     start_time = time.time()
     model_name = "Qwen/Qwen3-4B"
