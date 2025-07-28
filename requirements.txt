@@ -1,2 +1,3 @@
 vllm
 matplotlib
+eagle-llm
