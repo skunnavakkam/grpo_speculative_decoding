@@ -12,7 +12,6 @@ training. Highlights:
 """
 
 import copy
-import os
 import random
 import time
 from typing import List, Tuple
