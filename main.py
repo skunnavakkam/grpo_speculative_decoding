@@ -7,7 +7,7 @@ from torch.optim import Adam
 from eagle.model.ea_model import EaModel
 import torch.nn.functional as F
 
-NUM_STEPS = 100
+NUM_STEPS = 5
 BASE_MODEL = "Qwen/Qwen3-4B"
 SPECULATIVE_MODEL = "AngelSlim/Qwen3-4B_eagle3"
 DATASET = "trl-lib/tldr"
@@ -29,7 +29,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 def main():
     # Initialize vLLM engine
     llm = LLM(
-        model="BASE_MODEL",
+        model=BASE_MODEL,
         tensor_parallel_size=1,
         dtype="fp16",
         gpu_ids=[0],
@@ -44,13 +44,13 @@ def main():
     # Load HuggingFace reference model for policy updates
     device = torch.device("cuda:1")
     ref_model = AutoModelForCausalLM.from_pretrained(
-        "BASE_MODEL",
+        BASE_MODEL,
         torch_dtype=torch.float16,
         device_map={"": device},
         trust_remote_code=True,
     )
     ref_tokenizer = AutoTokenizer.from_pretrained(
-        "BASE_MODEL",
+        BASE_MODEL,
         trust_remote_code=True,
     )
 
@@ -129,9 +129,11 @@ def main():
         optimizer.step()
 
         # Sync updated weights back into vLLM engine
-        new_weights = [
-            (n, p.data.clone().cpu()) for n, p in ref_model.named_parameters()
-        ]
+        with torch.no_grad():  # no need for autograd here
+            new_weights = [
+                (n, p.data.to("cuda:0", non_blocking=True))  # copy directly to GPU0
+                for n, p in ref_model.named_parameters()
+            ]
         llm.model_runner.model.load_weights(new_weights)
 
         # Placeholder for speculative fine-tuning
@@ -172,7 +174,7 @@ def main():
 
             # now sync the updated draft head into vLLM’s speculative model
             new_ea_weights = [
-                (n, p.data.clone().cpu())
+                (n, p.data.to("cuda:0", non_blocking=True))
                 for n, p in ref_eagle.draft_model.named_parameters()
             ]
             llm.model_runner.speculative_model.load_weights(new_ea_weights)
