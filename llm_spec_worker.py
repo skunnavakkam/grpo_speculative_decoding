@@ -11,14 +11,16 @@ import os
 import time
 import ray
 from vllm import LLM
-from rlhf_utils import WorkerExtension
+from vllm.config import ParallelConfig
+from vllm.engine.arg_utils import EngineArgs
+
 
 BASE_MODEL = "Qwen/Qwen3-4B"
 DRAFT_MODEL = "AngelSlim/Qwen3-4B_eagle3"
 
 # ---------------------------------------------------------------------
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")  # pin to GPU-0
-ray.init(address="auto", num_cpus=0, num_gpus=1)
+ray.init(address="auto")
 
 
 @ray.remote(num_gpus=1, max_restarts=-1)
@@ -27,19 +29,26 @@ class VLLMEngine(LLM):
 
     pass
 
+parallel_config = ParallelConfig(pipeline_parallel_size=1, tensor_parallel_size=1, worker_use_ray=True)
+parallel_config.worker_extension_cls = "rlhf_utils.WorkerExtension"
 
-engine = VLLMEngine.options(name="vllm_engine", lifetime="detached").remote(
+engine_args = EngineArgs(
     model=BASE_MODEL,
     dtype="fp16",
     tensor_parallel_size=1,
     enforce_eager=True,  # faster swaps
-    worker_extension_cls=WorkerExtension,  # exposes update_weight
-    speculative_config={
-        "model": DRAFT_MODEL,
-        "method": "eagle",
-        "num_speculative_tokens": 5,
-    },
-    distributed_executor_backend="ray",
+)
+
+engine_args.parallel_config = parallel_config
+engine_args.speculative_config =  {
+    "model": DRAFT_MODEL,
+    "method": "eagle",
+    "num_speculative_tokens": 5,
+}
+
+engine = VLLMEngine.options(name="vllm_engine", lifetime="detached").remote(
+    model=BASE_MODEL,
+    engine_args=engine_args
 )
 
 print("[vllm-worker] ready – waiting for generate / weight-update RPCs …")

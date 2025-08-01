@@ -46,7 +46,7 @@ EPS = 1e-8  # numerical stability constant
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "1")  # trainer lives on GPU-1
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-ray.init(address="auto", num_cpus=0, num_gpus=1)
+ray.init()
 llm_actor = ray.get_actor("vllm_engine")  # created by vllm_worker.py
 
 # Shared NCCL process-group between trainer (rank-0) and worker (rank-1)
