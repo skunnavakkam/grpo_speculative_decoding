@@ -22,6 +22,8 @@ from datasets import load_dataset
 from torch.optim import Adam
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from vllm import LLM, SamplingParams
+from eagle.model.ea_model import EaModel
+
 
 # ───────────────────────────────────────────────────────────────────────────
 # Hyper‑parameters
@@ -102,7 +104,6 @@ for p in old_model.parameters():
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, trust_remote_code=True)
 
 # Draft (speculative) model wrapper
-from eagle.model.ea_model import EaModel
 
 ea_wrapper = EaModel(
     base_model=ref_model,
