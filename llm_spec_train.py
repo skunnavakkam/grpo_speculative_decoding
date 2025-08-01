@@ -25,9 +25,8 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from vllm import SamplingParams
 from vllm.utils import get_ip, get_open_port
-from vllm.examples.offline_inference.rlhf_utils import (
-    stateless_init_process_group,
-)
+from rlhf_utils import stateless_init_process_group
+from eagle.model.ea_model import EaModel
 
 # ────────────────────────────── HYPER-PARAMS ──────────────────────────────
 NUM_STEPS = 100
@@ -68,7 +67,6 @@ policy = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True,
 )
 
-from eagle.model.ea_model import EaModel
 
 ea = EaModel(
     base_model=policy,

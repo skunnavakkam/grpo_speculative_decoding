@@ -11,7 +11,7 @@ import os
 import time
 import ray
 from vllm import LLM
-from vllm.examples.offline_inference.rlhf_utils import WorkerExtension
+from rlhf_utils import WorkerExtension
 
 BASE_MODEL = "Qwen/Qwen3-4B"
 DRAFT_MODEL = "AngelSlim/Qwen3-4B_eagle3"
