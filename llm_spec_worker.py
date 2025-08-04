@@ -25,6 +25,7 @@ from datasets import load_dataset
 NUM_TRAINING_STEPS = 100
 NUM_ROLLOUTS = 4
 SYSTEM_PROMPT = "Summarize the following text in 100 words or less."
+eps = 0.2
 
 
 class MyLLM(LLM):
@@ -41,9 +42,9 @@ BASE_MODEL = "Qwen/Qwen3-4B"
 DRAFT_MODEL = "AngelSlim/Qwen3-4B_eagle3"
 
 # Load base model and draft model on CUDA:0
-base_model = AutoModelForCausalLM.from_pretrained(BASE_MODEL).to("cuda:0")
 base_model_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
-draft_model = EaModel.from_pretrained(DRAFT_MODEL).to("cuda:0")
+draft_model = EaModel.from_pretrained(DRAFT_MODEL, base_model_path=BASE_MODEL)
+base_model = draft_model.base_model
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 ray.init()
@@ -118,9 +119,56 @@ prompts = base_model_tokenizer.apply_chat_template(
 )
 
 
+def reward_len(text):
+    return -abs(20 - len(text))
+
+
+bm_optimizer = torch.optim.AdamW(base_model.parameters(), lr=1e-5)
+ea_optimizer = torch.optim.AdamW(draft_model.parameters(), lr=1e-5)
+
 for i in range(NUM_TRAINING_STEPS):
     # generate NUM_ROLLOUTS rollouts
     prompt = prompts[i]
     outputs = ray.get(llm.generate.remote(prompt, sampling_params))
+
+    generated_texts = [output.outputs[0].text for output in outputs]
+    rewards = torch.tensor([reward_len(text) for text in generated_texts])
+    r_mean = rewards.mean()
+    r_std = rewards.std()
+
+    advantage = (rewards - r_mean) / (r_std + 1e-8)
+
+    responses = [p + g for p, g in zip(prompt, generated_texts)]
+
+    tokens = base_model_tokenizer(responses, return_tensors="pt", padding=True).to(
+        "cuda:0"
+    )
+
+    outputs = base_model(
+        input_ids=tokens["input_ids"],
+        attention_mask=tokens["attention_mask"],
+        return_dict=True,
+    )
+    logprobs = torch.log_softmax(outputs.logits, dim=-1)
+
+    with torch.no_grad():
+        old_logprobs = logprobs.clone()
+    new_logprobs = logprobs
+
+    ratio = torch.exp(new_logprobs - old_logprobs)
+
+    surr1 = ratio * advantage
+    surr2 = torch.clamp(ratio, 1 - eps, 1 + eps) * advantage
+
+    loss = -torch.min(surr1, surr2).mean()
+
+    bm_optimizer.zero_grad()
+    loss.backward()
+    bm_optimizer.step()
+
+    ea_optimizer.zero_grad()
+    loss.backward()
+    ea_optimizer.step()
+
     # update the draft model
     pass
