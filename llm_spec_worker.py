@@ -20,6 +20,8 @@ from vllm import LLM, SamplingParams
 from vllm.utils import get_ip, get_open_port
 from eagle.model.ea_model import EaModel
 
+from eagle.ge_data import allocation
+
 from datasets import load_dataset
 
 NUM_TRAINING_STEPS = 100
@@ -42,9 +44,11 @@ BASE_MODEL = "Qwen/Qwen3-4B"
 DRAFT_MODEL = "AngelSlim/Qwen3-4B_eagle3"
 
 # Load base model and draft model on CUDA:0
+base_model = AutoModelForCausalLM.from_pretrained(BASE_MODEL).to("cuda:0")
 base_model_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
-draft_model = EaModel.from_pretrained(DRAFT_MODEL, base_model_path=BASE_MODEL)
-base_model = draft_model.base_model
+draft_model = EaModel(
+    DRAFT_MODEL, base_model=base_model, base_model_name_or_path=BASE_MODEL
+)
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 ray.init()
@@ -126,6 +130,8 @@ def reward_len(text):
 bm_optimizer = torch.optim.AdamW(base_model.parameters(), lr=1e-5)
 ea_optimizer = torch.optim.AdamW(draft_model.parameters(), lr=1e-5)
 
+response_cache = []
+
 for i in range(NUM_TRAINING_STEPS):
     # generate NUM_ROLLOUTS rollouts
     prompt = prompts[i]
@@ -166,9 +172,13 @@ for i in range(NUM_TRAINING_STEPS):
     loss.backward()
     bm_optimizer.step()
 
-    ea_optimizer.zero_grad()
-    loss.backward()
-    ea_optimizer.step()
+    for name, p in base_model.named_parameters():
+        handle = llm.collective_rpc.remote(
+            "update_weight", args=(name, p.dtype, p.shape)
+        )
+        model_update_group.broadcast(p, src=0, stream=torch.cuda.current_stream())
+        ray.get(handle)
 
-    # update the draft model
-    pass
+    if i % 5 == 0:
+        # update the draft model
+        pass
