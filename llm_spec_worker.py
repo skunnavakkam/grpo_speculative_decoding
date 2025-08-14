@@ -19,7 +19,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from vllm import LLM, SamplingParams
 from vllm.utils import get_ip, get_open_port
 from eagle.model.ea_model import EaModel
+from huggingface_hub import hf_hub_download
 
+from pathlib import Path
 from eagle.ge_data import allocation
 
 from datasets import load_dataset
@@ -46,9 +48,18 @@ DRAFT_MODEL = "AngelSlim/Qwen3-4B_eagle3"
 # Load base model and draft model on CUDA:0
 base_model = AutoModelForCausalLM.from_pretrained(BASE_MODEL).to("cuda:0")
 base_model_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
-draft_model = EaModel(
-    DRAFT_MODEL, base_model=base_model, base_model_name_or_path=BASE_MODEL
-)
+configpath = os.path.join(DRAFT_MODEL, "config.json")
+
+if not os.path.exists(configpath):
+    configpath = hf_hub_download(DRAFT_MODEL, "config.json")
+
+
+draft_model = EaModel(base_model, BASE_MODEL, configpath)
+load_model_path = os.path.join(DRAFT_MODEL, "pytorch_model.bin")
+if not os.path.exists(load_model_path):
+    load_model_path = hf_hub_download(DRAFT_MODEL, "pytorch_model.bin")
+ea_layer_state_dict = torch.load(load_model_path, map_location=base_model.device)
+draft_model.ea_layer.load_state_dict(ea_layer_state_dict, strict=True)
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 ray.init()
@@ -128,9 +139,11 @@ def reward_len(text):
 
 
 bm_optimizer = torch.optim.AdamW(base_model.parameters(), lr=1e-5)
-ea_optimizer = torch.optim.AdamW(draft_model.parameters(), lr=1e-5)
+ea_optimizer = torch.optim.AdamW(draft_model.ea_layer.parameters(), lr=1e-5)
 
 response_cache = []
+
+path = Path("ge_data").mkdir(exist_ok=True)
 
 for i in range(NUM_TRAINING_STEPS):
     # generate NUM_ROLLOUTS rollouts
@@ -181,4 +194,7 @@ for i in range(NUM_TRAINING_STEPS):
 
     if i % 5 == 0:
         # update the draft model
+        # Take the last two rollouts from the cache
+        last_two_rollouts = generated_texts[-2 * NUM_ROLLOUTS :]
+
         pass
