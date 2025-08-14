@@ -6,6 +6,7 @@ I'm going to use $M_L$ with parameters $\theta_L$ to denote the large model, and
 
 What I want to try is to use the large model to SFT / CPT the speculative model every $n_{update}$ steps such that the divergence between $M_L(\theta_L*)$ and $M_S(\theta_S*)$ is minimized.
 
-Let's start by doing this with vLLM! Since vLLM / tgi / sgLang (all transformer inference libraries) only support using medusa / eagle as draft models, we instead shall continously fine-tune medusa. 
+Let's start by doing this with SGLang since it alows for the Speculative Decoding training library SpecForge.
+
 
 
