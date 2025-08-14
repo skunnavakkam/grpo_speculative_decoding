@@ -22,4 +22,4 @@ python -m sglang.launch_server \
     --model_path Qwen/Qwen3-4B \ 
     --base-gpu-id 0 \
 
-python sglang_impl.py
+python sglang_impl_nospec.py
