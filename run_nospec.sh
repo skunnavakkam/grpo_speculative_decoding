@@ -18,5 +18,5 @@ uv pip install -r requirements.txt
 # Activate virtual environment
 source .venv/bin/activate
 
-python -m sglang.launch_server --model-path Qwen/Qwen3-4B
+python -m sglang.launch_server --model-path Qwen/Qwen3-4B --speculative-method EAGLE3 --speculative-model-path AngelSlim/Qwen3-4B_eagle3
 
